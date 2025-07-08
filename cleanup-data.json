@@ -1,0 +1,91 @@
+{
+  "testServiceIds": [
+    "cmci02twe003h1199enymv26x",
+    "cmchywa8t000m1199tdgf4sya",
+    "cmchzia5r001w1199a6zfxzie",
+    "cmchzx6sn00311199mfi7iocm",
+    "cmci0ebuf003q1199g4t34sf6",
+    "cmchz2n6z000x1199iub4z8vy",
+    "cmchztz6h002x1199xobdm4hh",
+    "cmchyswbn0000119920k58xud",
+    "cmchytnzp00071199hfpnpstq"
+  ],
+  "testCategoryIds": [
+    "final-test",
+    "test-category"
+  ],
+  "productionServices": [],
+  "productionCategories": [],
+  "locations": [
+    {
+      "id": "loc1",
+      "name": "D-ring road",
+      "address": "D-ring road",
+      "city": "Doha",
+      "state": null,
+      "zipCode": null,
+      "country": "Qatar",
+      "phone": null,
+      "email": null,
+      "isActive": true,
+      "createdAt": "2025-06-29T17:43:44.637Z",
+      "updatedAt": "2025-06-29T17:43:44.637Z"
+    },
+    {
+      "id": "home",
+      "name": "Home Service",
+      "address": "Mobile Service",
+      "city": "Doha",
+      "state": null,
+      "zipCode": null,
+      "country": "Qatar",
+      "phone": null,
+      "email": null,
+      "isActive": true,
+      "createdAt": "2025-06-29T17:43:44.693Z",
+      "updatedAt": "2025-06-29T17:43:44.693Z"
+    },
+    {
+      "id": "loc3",
+      "name": "Medinat Khalifa",
+      "address": "Medinat Khalifa",
+      "city": "Doha",
+      "state": null,
+      "zipCode": null,
+      "country": "Qatar",
+      "phone": null,
+      "email": null,
+      "isActive": true,
+      "createdAt": "2025-06-29T17:43:44.679Z",
+      "updatedAt": "2025-06-29T17:43:44.679Z"
+    },
+    {
+      "id": "loc2",
+      "name": "Muaither",
+      "address": "Muaither",
+      "city": "Doha",
+      "state": null,
+      "zipCode": null,
+      "country": "Qatar",
+      "phone": null,
+      "email": null,
+      "isActive": true,
+      "createdAt": "2025-06-29T17:43:44.651Z",
+      "updatedAt": "2025-06-29T17:43:44.651Z"
+    },
+    {
+      "id": "online",
+      "name": "Online Store",
+      "address": "Online",
+      "city": "Doha",
+      "state": null,
+      "zipCode": null,
+      "country": "Qatar",
+      "phone": null,
+      "email": null,
+      "isActive": true,
+      "createdAt": "2025-06-29T17:43:44.704Z",
+      "updatedAt": "2025-06-29T17:43:44.704Z"
+    }
+  ]
+}

@@ -1,0 +1,808 @@
+"use client"
+
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react"
+import { v4 as uuidv4 } from "uuid"
+import { useToast } from "@/components/ui/use-toast"
+import { Product, ProductCategory, ProductType, ProductTransfer, beautyProducts, defaultProductCategories, defaultProductTypes } from "./products-data"
+
+// Product storage keys
+const STORAGE_KEYS = {
+  PRODUCTS: 'salon_products',
+  CATEGORIES: 'salon_product_categories',
+  TYPES: 'salon_product_types',
+  TRANSFERS: 'salon_product_transfers'
+}
+
+// Context type definition
+interface ProductContextType {
+  // Products
+  products: Product[]
+  getProductById: (id: string) => Product | undefined
+  getProductsByCategory: (category: string) => Product[]
+  getRetailProducts: () => Product[]
+  addProduct: (productData: Omit<Product, "id" | "createdAt" | "updatedAt">) => Product
+  updateProduct: (updatedProduct: Product) => void
+  deleteProduct: (productId: string) => boolean
+  refreshProducts: () => void
+
+  // Categories
+  categories: ProductCategory[]
+  getCategoryById: (id: string) => ProductCategory | undefined
+  getCategoryName: (id: string) => string
+  addCategory: (categoryData: Omit<ProductCategory, "id" | "createdAt" | "updatedAt">) => ProductCategory
+  updateCategory: (updatedCategory: ProductCategory) => void
+  deleteCategory: (categoryId: string) => boolean
+  refreshCategories: () => void
+
+  // Product Types
+  productTypes: ProductType[]
+  getProductTypeById: (id: string) => ProductType | undefined
+  getProductTypeName: (id: string) => string
+  getProductTypesByCategory: (categoryId: string) => ProductType[]
+  addProductType: (typeData: Omit<ProductType, "id" | "createdAt" | "updatedAt">) => ProductType
+  updateProductType: (updatedType: ProductType) => void
+  deleteProductType: (typeId: string) => boolean
+  refreshProductTypes: () => void
+
+  // Transfers
+  transfers: ProductTransfer[]
+  getTransferById: (id: string) => ProductTransfer | undefined
+  getTransfersByProduct: (productId: string) => ProductTransfer[]
+  createTransfer: (transferData: Omit<ProductTransfer, "id" | "createdAt">) => ProductTransfer
+  updateTransfer: (updatedTransfer: ProductTransfer) => void
+  completeTransfer: (transferId: string) => boolean
+  cancelTransfer: (transferId: string) => boolean
+
+  // Data synchronization
+  lastUpdated: number
+  forceRefresh: () => void
+  fixRetailProducts: () => boolean
+  ensureShopIntegration: (triggerUpdate?: boolean) => Product[]
+  refreshShop: () => void
+}
+
+// Create context with default values
+const ProductContext = createContext<ProductContextType>({
+  products: [],
+  getProductById: () => undefined,
+  getProductsByCategory: () => [],
+  getRetailProducts: () => [],
+  addProduct: () => ({} as Product),
+  updateProduct: () => {},
+  deleteProduct: () => false,
+  refreshProducts: () => {},
+
+  categories: [],
+  getCategoryById: () => undefined,
+  getCategoryName: () => "Uncategorized",
+  addCategory: () => ({} as ProductCategory),
+  updateCategory: () => {},
+  deleteCategory: () => false,
+  refreshCategories: () => {},
+
+  productTypes: [],
+  getProductTypeById: () => undefined,
+  getProductTypeName: () => "Other",
+  getProductTypesByCategory: () => [],
+  addProductType: () => ({} as ProductType),
+  updateProductType: () => {},
+  deleteProductType: () => false,
+  refreshProductTypes: () => {},
+
+  transfers: [],
+  getTransferById: () => undefined,
+  getTransfersByProduct: () => [],
+  createTransfer: () => ({} as ProductTransfer),
+  updateTransfer: () => {},
+  completeTransfer: () => false,
+  cancelTransfer: () => false,
+
+  lastUpdated: 0,
+  forceRefresh: () => {},
+  fixRetailProducts: () => false,
+  ensureShopIntegration: () => [],
+  refreshShop: () => {},
+})
+
+// Storage utilities
+const getFromStorage = <T>(key: string, defaultValue: T): T => {
+  if (typeof window === 'undefined') return defaultValue
+  try {
+    const item = localStorage.getItem(key)
+    if (!item) return defaultValue
+
+    const parsed = JSON.parse(item)
+
+    // Convert date strings back to Date objects for categories and products
+    if (Array.isArray(parsed)) {
+      return parsed.map((item: any) => ({
+        ...item,
+        createdAt: item.createdAt ? new Date(item.createdAt) : new Date(),
+        updatedAt: item.updatedAt ? new Date(item.updatedAt) : new Date(),
+        completedAt: item.completedAt ? new Date(item.completedAt) : undefined,
+      })) as T
+    }
+
+    return parsed
+  } catch (error) {
+    console.error(`Error reading ${key} from localStorage:`, error)
+    return defaultValue
+  }
+}
+
+const saveToStorage = <T>(key: string, value: T): void => {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch (error) {
+    console.error(`Error saving ${key} to localStorage:`, error)
+  }
+}
+
+export function ProductProvider({ children }: { children: React.ReactNode }) {
+  const { toast } = useToast()
+  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<ProductCategory[]>([])
+  const [productTypes, setProductTypes] = useState<ProductType[]>([])
+  const [transfers, setTransfers] = useState<ProductTransfer[]>([])
+  const [isInitialized, setIsInitialized] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState(Date.now())
+
+  // Initialize data from storage
+  useEffect(() => {
+    if (isInitialized) return
+
+    try {
+      // Load products - merge with default beauty products
+      const storedProducts = getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, [])
+
+      // Normalize stored products to ensure they have proper flags
+      const normalizedStoredProducts = storedProducts.map(product => ({
+        ...product,
+        isRetail: product.isRetail !== undefined ? product.isRetail : true,
+        isActive: product.isActive !== undefined ? product.isActive : true
+      }))
+
+      const mergedProducts = [...beautyProducts, ...normalizedStoredProducts]
+      setProducts(mergedProducts)
+
+      // If we normalized any products, save them back to storage
+      if (normalizedStoredProducts.some((p, i) =>
+        p.isRetail !== storedProducts[i]?.isRetail ||
+        p.isActive !== storedProducts[i]?.isActive
+      )) {
+        console.log("🔧 Auto-fixing product retail/active status...")
+        saveToStorage(STORAGE_KEYS.PRODUCTS, normalizedStoredProducts)
+      }
+
+      // Load categories - merge with default categories
+      const storedCategories = getFromStorage<ProductCategory[]>(STORAGE_KEYS.CATEGORIES, [])
+      // Ensure default categories have proper Date objects
+      const defaultCategoriesWithDates = defaultProductCategories.map(cat => ({
+        ...cat,
+        createdAt: new Date(cat.createdAt),
+        updatedAt: new Date(cat.updatedAt)
+      }))
+
+      // Merge categories: use stored version if it exists (for modified defaults), otherwise use default
+      const mergedCategories = defaultCategoriesWithDates.map(defaultCat => {
+        const storedVersion = storedCategories.find(stored => stored.id === defaultCat.id)
+        return storedVersion || defaultCat
+      })
+
+      // Add any user-created categories (those not in defaults)
+      const userCreatedCategories = storedCategories.filter(stored =>
+        !defaultProductCategories.find(def => def.id === stored.id)
+      )
+
+      const allCategories = [...mergedCategories, ...userCreatedCategories]
+      setCategories(allCategories)
+
+      // Load product types - merge with default types
+      const storedTypes = getFromStorage<ProductType[]>(STORAGE_KEYS.TYPES, [])
+      // Ensure default types have proper Date objects
+      const defaultTypesWithDates = defaultProductTypes.map(type => ({
+        ...type,
+        createdAt: new Date(type.createdAt),
+        updatedAt: new Date(type.updatedAt)
+      }))
+
+      // Deduplicate types by name to prevent duplicate keys in UI
+      const allTypes = [...defaultTypesWithDates, ...storedTypes]
+      const uniqueTypes = allTypes.filter((type, index, array) =>
+        array.findIndex(t => t.name.toLowerCase() === type.name.toLowerCase()) === index
+      )
+      setProductTypes(uniqueTypes)
+
+      // Load transfers
+      const storedTransfers = getFromStorage<ProductTransfer[]>(STORAGE_KEYS.TRANSFERS, [])
+      setTransfers(storedTransfers)
+
+      setIsInitialized(true)
+    } catch (error) {
+      console.error("Error initializing product data:", error)
+      setProducts(beautyProducts)
+      setCategories(defaultProductCategories)
+      setProductTypes(defaultProductTypes)
+      setTransfers([])
+      setIsInitialized(true)
+    }
+  }, [isInitialized])
+
+  // Product methods
+  const getProductById = useCallback((id: string) => {
+    return products.find(product => product.id === id)
+  }, [products])
+
+  const getProductsByCategory = useCallback((category: string) => {
+    return products.filter(product => product.category === category)
+  }, [products])
+
+  const getRetailProducts = useCallback(() => {
+    // Ensure all products have proper isRetail and isActive flags
+    const normalizedProducts = products.map(product => ({
+      ...product,
+      isRetail: product.isRetail !== undefined ? product.isRetail : true,
+      isActive: product.isActive !== undefined ? product.isActive : true
+    }))
+
+    const retailProducts = normalizedProducts.filter(product => product.isRetail && product.isActive !== false)
+
+    console.log("🔍 getRetailProducts called:")
+    console.log("📦 Total products:", products.length)
+    console.log("🛒 Retail products:", retailProducts.length)
+    console.log("📊 Product breakdown:", {
+      total: products.length,
+      retail: normalizedProducts.filter(p => p.isRetail).length,
+      active: normalizedProducts.filter(p => p.isActive !== false).length,
+      retailAndActive: retailProducts.length
+    })
+
+    // Debug specific categories
+    const extensionsProducts = normalizedProducts.filter(p => p.category === "Extensions")
+    const nailCareProducts = normalizedProducts.filter(p => p.category === "Nail Care")
+
+    console.log("🔗 Extensions products:", extensionsProducts.length, "retail:", extensionsProducts.filter(p => p.isRetail && p.isActive !== false).length)
+    console.log("💅 Nail Care products:", nailCareProducts.length, "retail:", nailCareProducts.filter(p => p.isRetail && p.isActive !== false).length)
+
+    return retailProducts
+  }, [products])
+
+  const addProduct = useCallback((productData: Omit<Product, "id" | "createdAt" | "updatedAt">) => {
+    const newProduct: Product = {
+      id: uuidv4(),
+      ...productData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+
+    setProducts(prev => {
+      const updated = [...prev, newProduct]
+      saveToStorage(STORAGE_KEYS.PRODUCTS, updated.filter(p => !beautyProducts.find(bp => bp.id === p.id)))
+      return updated
+    })
+
+    // Update category product count
+    if (productData.category) {
+      const category = categories.find(c => c.name === productData.category)
+      if (category) {
+        const updatedCategory = {
+          ...category,
+          productCount: category.productCount + 1,
+          updatedAt: new Date()
+        }
+        updateCategory(updatedCategory)
+      }
+    }
+
+    // Trigger a refresh to update all components including shop
+    setLastUpdated(Date.now())
+
+    // Log product creation for debugging
+    console.log("🆕 Product added to provider:", {
+      id: newProduct.id,
+      name: newProduct.name,
+      isRetail: newProduct.isRetail,
+      isActive: newProduct.isActive,
+      category: newProduct.category,
+      type: newProduct.type
+    })
+
+    // If it's a retail product, log that it should appear in shop
+    if (newProduct.isRetail && newProduct.isActive !== false) {
+      console.log("🛒 Retail product added - should appear in shop:", newProduct.name)
+    }
+
+    return newProduct
+  }, [categories])
+
+  const updateProduct = useCallback((updatedProduct: Product) => {
+    setProducts(prev => {
+      const updated = prev.map(product =>
+        product.id === updatedProduct.id
+          ? { ...updatedProduct, updatedAt: new Date() }
+          : product
+      )
+      saveToStorage(STORAGE_KEYS.PRODUCTS, updated.filter(p => !beautyProducts.find(bp => bp.id === p.id)))
+      return updated
+    })
+
+    // Trigger a refresh to update all components including shop
+    setLastUpdated(Date.now())
+
+    // Log product update for debugging
+    console.log("📝 Product updated in provider:", {
+      id: updatedProduct.id,
+      name: updatedProduct.name,
+      isRetail: updatedProduct.isRetail,
+      isActive: updatedProduct.isActive,
+      category: updatedProduct.category,
+      type: updatedProduct.type
+    })
+
+    // If it's a retail product, log that it should appear in shop
+    if (updatedProduct.isRetail && updatedProduct.isActive !== false) {
+      console.log("🛒 Retail product updated - should appear in shop:", updatedProduct.name)
+    }
+  }, [])
+
+  const deleteProduct = useCallback((productId: string) => {
+    const productToDelete = products.find(p => p.id === productId)
+    if (!productToDelete) return false
+
+    setProducts(prev => {
+      const updated = prev.filter(product => product.id !== productId)
+      saveToStorage(STORAGE_KEYS.PRODUCTS, updated.filter(p => !beautyProducts.find(bp => bp.id === p.id)))
+      return updated
+    })
+
+    // Update category product count
+    if (productToDelete.category) {
+      const category = categories.find(c => c.name === productToDelete.category)
+      if (category) {
+        const updatedCategory = {
+          ...category,
+          productCount: Math.max(0, category.productCount - 1),
+          updatedAt: new Date()
+        }
+        updateCategory(updatedCategory)
+      }
+    }
+
+    return true
+  }, [products, categories])
+
+  const refreshProducts = useCallback(() => {
+    const storedProducts = getFromStorage<Product[]>(STORAGE_KEYS.PRODUCTS, [])
+    const mergedProducts = [...beautyProducts, ...storedProducts]
+    setProducts(mergedProducts)
+  }, [])
+
+  // Category methods
+  const getCategoryById = useCallback((id: string) => {
+    return categories.find(category => category.id === id)
+  }, [categories])
+
+  const getCategoryName = useCallback((id: string) => {
+    const category = categories.find(c => c.id === id || c.name === id)
+    return category?.name || "Uncategorized"
+  }, [categories])
+
+  const addCategory = useCallback((categoryData: Omit<ProductCategory, "id" | "createdAt" | "updatedAt">) => {
+    // Check for duplicate names (case-insensitive)
+    const existingCategory = categories.find(c =>
+      c.name.toLowerCase() === categoryData.name.toLowerCase()
+    )
+
+    if (existingCategory) {
+      toast({
+        variant: "destructive",
+        title: "Duplicate category",
+        description: `A category named "${categoryData.name}" already exists.`,
+      })
+      throw new Error(`Category "${categoryData.name}" already exists`)
+    }
+
+    const newCategory: ProductCategory = {
+      id: uuidv4(),
+      ...categoryData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+
+    setCategories(prev => {
+      const updated = [...prev, newCategory]
+      saveToStorage(STORAGE_KEYS.CATEGORIES, updated.filter(c => !defaultProductCategories.find(dc => dc.id === c.id)))
+      return updated
+    })
+
+    return newCategory
+  }, [categories, toast])
+
+  const updateCategory = useCallback((updatedCategory: ProductCategory) => {
+    // Find the old category to check if name changed
+    const oldCategory = categories.find(c => c.id === updatedCategory.id)
+    const nameChanged = oldCategory && oldCategory.name !== updatedCategory.name
+
+    setCategories(prev => {
+      const updated = prev.map(category =>
+        category.id === updatedCategory.id
+          ? { ...updatedCategory, updatedAt: new Date() }
+          : category
+      )
+
+      // Save all user-created categories AND modified default categories
+      const categoriesToSave = updated.filter(c => {
+        const defaultCategory = defaultProductCategories.find(dc => dc.id === c.id)
+        // Save if it's not a default category, OR if it's a modified default category
+        return !defaultCategory || (defaultCategory && defaultCategory.name !== c.name)
+      })
+
+      saveToStorage(STORAGE_KEYS.CATEGORIES, categoriesToSave)
+      return updated
+    })
+
+    // If category name changed, update all products that reference this category
+    if (nameChanged && oldCategory) {
+      setProducts(prev => {
+        const updated = prev.map(product =>
+          product.category === oldCategory.name
+            ? { ...product, category: updatedCategory.name, updatedAt: new Date() }
+            : product
+        )
+        saveToStorage(STORAGE_KEYS.PRODUCTS, updated.filter(p => !beautyProducts.find(bp => bp.id === p.id)))
+        return updated
+      })
+
+      toast({
+        title: "Category updated",
+        description: `Category renamed from "${oldCategory.name}" to "${updatedCategory.name}". All products have been updated.`,
+      })
+    }
+
+    // Trigger a refresh to update all components
+    setLastUpdated(Date.now())
+  }, [categories, toast])
+
+  const deleteCategory = useCallback((categoryId: string) => {
+    const categoryToDelete = categories.find(c => c.id === categoryId)
+    if (!categoryToDelete) return false
+
+    // Check if category has products
+    const productsInCategory = products.filter(p => p.category === categoryToDelete.name)
+    if (productsInCategory.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Cannot delete category",
+        description: `This category contains ${productsInCategory.length} product(s). Please move or delete the products first.`,
+      })
+      return false
+    }
+
+    setCategories(prev => {
+      const updated = prev.filter(category => category.id !== categoryId)
+      saveToStorage(STORAGE_KEYS.CATEGORIES, updated.filter(c => !defaultProductCategories.find(dc => dc.id === c.id)))
+      return updated
+    })
+
+    return true
+  }, [categories, products, toast])
+
+  const refreshCategories = useCallback(() => {
+    const storedCategories = getFromStorage<ProductCategory[]>(STORAGE_KEYS.CATEGORIES, [])
+    // Ensure default categories have proper Date objects
+    const defaultCategoriesWithDates = defaultProductCategories.map(cat => ({
+      ...cat,
+      createdAt: new Date(cat.createdAt),
+      updatedAt: new Date(cat.updatedAt)
+    }))
+
+    // Merge categories: use stored version if it exists (for modified defaults), otherwise use default
+    const mergedCategories = defaultCategoriesWithDates.map(defaultCat => {
+      const storedVersion = storedCategories.find(stored => stored.id === defaultCat.id)
+      return storedVersion || defaultCat
+    })
+
+    // Add any user-created categories (those not in defaults)
+    const userCreatedCategories = storedCategories.filter(stored =>
+      !defaultProductCategories.find(def => def.id === stored.id)
+    )
+
+    const allCategories = [...mergedCategories, ...userCreatedCategories]
+    setCategories(allCategories)
+  }, [])
+
+  // Product Type methods
+  const getProductTypeById = useCallback((id: string) => {
+    return productTypes.find(type => type.id === id)
+  }, [productTypes])
+
+  const getProductTypeName = useCallback((id: string) => {
+    const type = productTypes.find(t => t.id === id || t.name === id)
+    return type?.name || "Other"
+  }, [productTypes])
+
+  const getProductTypesByCategory = useCallback((categoryId: string) => {
+    return productTypes.filter(type => type.categoryId === categoryId && type.isActive)
+  }, [productTypes])
+
+  const addProductType = useCallback((typeData: Omit<ProductType, "id" | "createdAt" | "updatedAt">) => {
+    // Check for duplicate names (case-insensitive)
+    const existingType = productTypes.find(t =>
+      t.name.toLowerCase() === typeData.name.toLowerCase()
+    )
+
+    if (existingType) {
+      toast({
+        variant: "destructive",
+        title: "Duplicate product type",
+        description: `A product type named "${typeData.name}" already exists.`,
+      })
+      throw new Error(`Product type "${typeData.name}" already exists`)
+    }
+
+    const newType: ProductType = {
+      id: uuidv4(),
+      ...typeData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    }
+
+    setProductTypes(prev => {
+      const updated = [...prev, newType]
+      saveToStorage(STORAGE_KEYS.TYPES, updated.filter(t => !defaultProductTypes.find(dt => dt.id === t.id)))
+      return updated
+    })
+
+    return newType
+  }, [productTypes, toast])
+
+  const updateProductType = useCallback((updatedType: ProductType) => {
+    setProductTypes(prev => {
+      const updated = prev.map(type =>
+        type.id === updatedType.id
+          ? { ...updatedType, updatedAt: new Date() }
+          : type
+      )
+      saveToStorage(STORAGE_KEYS.TYPES, updated.filter(t => !defaultProductTypes.find(dt => dt.id === t.id)))
+      return updated
+    })
+  }, [])
+
+  const deleteProductType = useCallback((typeId: string) => {
+    const typeToDelete = productTypes.find(t => t.id === typeId)
+    if (!typeToDelete) return false
+
+    // Check if type has products
+    const productsWithType = products.filter(p => p.type === typeToDelete.name)
+    if (productsWithType.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Cannot delete product type",
+        description: `This type is used by ${productsWithType.length} product(s). Please change the product types first.`,
+      })
+      return false
+    }
+
+    setProductTypes(prev => {
+      const updated = prev.filter(type => type.id !== typeId)
+      saveToStorage(STORAGE_KEYS.TYPES, updated.filter(t => !defaultProductTypes.find(dt => dt.id === t.id)))
+      return updated
+    })
+
+    return true
+  }, [productTypes, products, toast])
+
+  const refreshProductTypes = useCallback(() => {
+    const storedTypes = getFromStorage<ProductType[]>(STORAGE_KEYS.TYPES, [])
+    // Ensure default types have proper Date objects
+    const defaultTypesWithDates = defaultProductTypes.map(type => ({
+      ...type,
+      createdAt: new Date(type.createdAt),
+      updatedAt: new Date(type.updatedAt)
+    }))
+
+    // Deduplicate types by name to prevent duplicate keys in UI
+    const allTypes = [...defaultTypesWithDates, ...storedTypes]
+    const uniqueTypes = allTypes.filter((type, index, array) =>
+      array.findIndex(t => t.name.toLowerCase() === type.name.toLowerCase()) === index
+    )
+    setProductTypes(uniqueTypes)
+  }, [])
+
+  // Transfer methods
+  const getTransferById = useCallback((id: string) => {
+    return transfers.find(transfer => transfer.id === id)
+  }, [transfers])
+
+  const getTransfersByProduct = useCallback((productId: string) => {
+    return transfers.filter(transfer => transfer.productId === productId)
+  }, [transfers])
+
+  const createTransfer = useCallback((transferData: Omit<ProductTransfer, "id" | "createdAt">) => {
+    const newTransfer: ProductTransfer = {
+      id: uuidv4(),
+      ...transferData,
+      createdAt: new Date()
+    }
+
+    setTransfers(prev => {
+      const updated = [...prev, newTransfer]
+      saveToStorage(STORAGE_KEYS.TRANSFERS, updated)
+      return updated
+    })
+
+    return newTransfer
+  }, [])
+
+  const updateTransfer = useCallback((updatedTransfer: ProductTransfer) => {
+    setTransfers(prev => {
+      const updated = prev.map(transfer =>
+        transfer.id === updatedTransfer.id ? updatedTransfer : transfer
+      )
+      saveToStorage(STORAGE_KEYS.TRANSFERS, updated)
+      return updated
+    })
+  }, [])
+
+  const completeTransfer = useCallback((transferId: string) => {
+    const transfer = transfers.find(t => t.id === transferId)
+    if (!transfer || transfer.status !== 'pending') return false
+
+    const updatedTransfer = {
+      ...transfer,
+      status: 'completed' as const,
+      completedAt: new Date()
+    }
+
+    updateTransfer(updatedTransfer)
+
+    // Update product inventory levels would happen here in a real app
+    toast({
+      title: "Transfer completed",
+      description: `${transfer.quantity} units of ${transfer.productName} transferred successfully.`,
+    })
+
+    return true
+  }, [transfers, updateTransfer, toast])
+
+  const cancelTransfer = useCallback((transferId: string) => {
+    const transfer = transfers.find(t => t.id === transferId)
+    if (!transfer || transfer.status !== 'pending') return false
+
+    const updatedTransfer = {
+      ...transfer,
+      status: 'cancelled' as const
+    }
+
+    updateTransfer(updatedTransfer)
+
+    toast({
+      title: "Transfer cancelled",
+      description: `Transfer of ${transfer.productName} has been cancelled.`,
+    })
+
+    return true
+  }, [transfers, updateTransfer, toast])
+
+  // Force refresh function to trigger updates across all components
+  const forceRefresh = useCallback(() => {
+    setLastUpdated(Date.now())
+  }, [])
+
+  // Utility function to fix products that should be retail but aren't
+  const fixRetailProducts = useCallback(() => {
+    console.log("🔧 Fixing retail products...")
+
+    let updated = false
+    const fixedProducts = products.map(product => {
+      // Fix products that should be retail but aren't
+      if (product.isRetail === undefined || product.isRetail === null) {
+        console.log(`🔧 Fixing retail status for: ${product.name}`)
+        updated = true
+        return { ...product, isRetail: true, isActive: true, updatedAt: new Date() }
+      }
+
+      // Fix products that should be active but aren't
+      if (product.isActive === undefined || product.isActive === null) {
+        console.log(`🔧 Fixing active status for: ${product.name}`)
+        updated = true
+        return { ...product, isActive: true, updatedAt: new Date() }
+      }
+
+      return product
+    })
+
+    if (updated) {
+      setProducts(fixedProducts)
+      saveToStorage(STORAGE_KEYS.PRODUCTS, fixedProducts.filter(p => !beautyProducts.find(bp => bp.id === p.id)))
+      setLastUpdated(Date.now())
+      console.log("✅ Products fixed!")
+      return true
+    } else {
+      console.log("ℹ️ No products needed fixing")
+      return false
+    }
+  }, [products])
+
+  // Function to ensure shop integration and real-time updates
+  const ensureShopIntegration = useCallback((triggerUpdate = true) => {
+    console.log("🔄 Ensuring shop integration...")
+
+    // Only force refresh if explicitly requested (to avoid infinite loops)
+    if (triggerUpdate) {
+      setLastUpdated(Date.now())
+    }
+
+    // Log current retail products for debugging
+    const retailProducts = getRetailProducts()
+    console.log("🛒 Current retail products for shop:", retailProducts.length)
+
+    if (retailProducts.length > 0) {
+      console.log("📦 Retail products:", retailProducts.map(p => ({
+        name: p.name,
+        category: p.category,
+        isRetail: p.isRetail,
+        isActive: p.isActive
+      })))
+    }
+
+    return retailProducts
+  }, [getRetailProducts])
+
+  // Function to manually trigger shop refresh
+  const refreshShop = useCallback(() => {
+    console.log("🔄 Manually refreshing shop...")
+    ensureShopIntegration()
+  }, [ensureShopIntegration])
+
+  return (
+    <ProductContext.Provider
+      value={{
+        products,
+        getProductById,
+        getProductsByCategory,
+        getRetailProducts,
+        addProduct,
+        updateProduct,
+        deleteProduct,
+        refreshProducts,
+
+        categories,
+        getCategoryById,
+        getCategoryName,
+        addCategory,
+        updateCategory,
+        deleteCategory,
+        refreshCategories,
+
+        productTypes,
+        getProductTypeById,
+        getProductTypeName,
+        getProductTypesByCategory,
+        addProductType,
+        updateProductType,
+        deleteProductType,
+        refreshProductTypes,
+
+        transfers,
+        getTransferById,
+        getTransfersByProduct,
+        createTransfer,
+        updateTransfer,
+        completeTransfer,
+        cancelTransfer,
+
+        lastUpdated,
+        forceRefresh,
+        fixRetailProducts,
+        ensureShopIntegration,
+        refreshShop,
+      }}
+    >
+      {children}
+    </ProductContext.Provider>
+  )
+}
+
+export const useProducts = () => useContext(ProductContext)

@@ -1,0 +1,501 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 262 83% 58%;
+    --radius: 0.75rem;
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 262 83% 58%;
+    --chart-1: 262 83% 58%;
+    --chart-2: 173 80% 40%;
+    --chart-3: 43 96% 56%;
+    --chart-4: 338 85% 55%;
+    --chart-5: 198 93% 60%;
+
+    /* Currency variables - these will be set dynamically by the GlobalCurrencyEnforcer */
+    --currency-symbol: "$";
+    --currency-code: "USD";
+    --currency-name: "US Dollar";
+    --currency-decimal-digits: 2;
+  }
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 262 83% 58%;
+    --sidebar-background: 240 10% 3.9%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 0 0% 98%;
+    --sidebar-primary-foreground: 240 5.9% 10%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 262 83% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+.animate-in {
+  animation: animateIn 0.3s ease-in-out;
+}
+
+@keyframes animateIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.dark .glass-card {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Custom scrollbar styles */
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, #f1f1f1);
+  border-radius: 10px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, #c1c1c1);
+  border-radius: 10px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, #a8a8a8);
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb, #c1c1c1) var(--scrollbar-track, #f1f1f1);
+}
+
+/* Hide scrollbar but keep functionality */
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+/* Navigation-specific scrollbar styles */
+.scrollbar-track-transparent::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thumb-border::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 6px;
+}
+
+.scrollbar-thumb-border::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.3);
+}
+
+/* Ensure scrollbar appears below content with proper spacing */
+.nav-scroll-container {
+  padding-bottom: 8px; /* Space for scrollbar */
+  margin-bottom: -8px; /* Compensate for padding */
+}
+
+/* Dark mode scrollbar adjustments */
+.dark .scrollbar-thumb-border::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+}
+
+.dark .scrollbar-thumb-border::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.4);
+}
+
+/* Currency-specific styles */
+[data-currency-display="true"] {
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+  position: relative;
+  z-index: 20;
+  background-color: white;
+  background-image: none !important;
+}
+
+/* Currency display component specific styling */
+.currency-display {
+  position: relative;
+  z-index: 20;
+  background-color: white;
+  backdrop-filter: none;
+  background-image: none !important;
+}
+
+/* Remove calendar watermarks from appointment confirmation */
+[class*="confirm-your-appointment"],
+[class*="appointment-details"],
+.bg-gray-50,
+.border-t {
+  background-image: none !important;
+  position: relative;
+  z-index: 10;
+}
+
+/* Remove all background images from appointment booking page */
+.confirm-your-appointment,
+.appointment-details,
+[class*="appointment"] *,
+[class*="book"] * {
+  background-image: none !important;
+}
+
+/* Fix for vertical calendar watermark */
+body:has(.confirm-your-appointment),
+body:has([class*="appointment"]),
+body:has([class*="book"]),
+.container,
+.max-w-4xl,
+.card,
+.card-content,
+.bg-gray-50,
+.border-t,
+.space-y-6,
+[class*="appointment"] *,
+[class*="book"] * {
+  background-image: none !important;
+  overflow-x: visible;
+}
+
+/* Force remove all background images - DISABLED to allow proper styling */
+/* * {
+  background-image: none !important;
+} */
+
+/* Completely remove any calendar display from booking confirmation and success pages */
+.booking-confirmed table,
+#booking-confirmed table,
+.confirm-your-appointment table,
+#confirm-your-appointment table,
+.booking-success table,
+#booking-success table,
+/* Target calendar-specific classes */
+.rdp,
+.rdp-months,
+.rdp-month,
+.rdp-table,
+.calendar-wrapper,
+[class*="calendar"],
+[id*="calendar"],
+/* Target any table in the booking confirmation or success pages */
+.booking-confirmed [class*="calendar"],
+.booking-confirmed [id*="calendar"],
+.confirm-your-appointment [class*="calendar"],
+.confirm-your-appointment [id*="calendar"],
+/* Hide any calendar that might appear in the background */
+body.booking-page table,
+body.appointment-page table,
+.booking-confirmed table,
+.confirm-your-appointment table {
+  display: none !important;
+}
+
+/* Hide any month/year headers that might be part of calendars */
+.booking-confirmed [class*="calendar"] h2,
+#booking-confirmed [class*="calendar"] h2,
+.confirm-your-appointment [class*="calendar"] h2,
+#confirm-your-appointment [class*="calendar"] h2,
+.booking-success [class*="calendar"] h2,
+#booking-success [class*="calendar"] h2 {
+  display: none !important;
+}
+
+/* Force hide any calendar-like elements */
+.booking-confirmed .p-4.bg-white.rounded-lg,
+#booking-confirmed .p-4.bg-white.rounded-lg,
+.confirm-your-appointment .p-4.bg-white.rounded-lg,
+#confirm-your-appointment .p-4.bg-white.rounded-lg {
+  display: none !important;
+}
+
+/* Specifically target and hide the May 2025 calendar */
+.booking-page table,
+.booking-confirmed table,
+#booking-confirmed table,
+.confirm-your-appointment table,
+#confirm-your-appointment table,
+table.w-full.border-collapse {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  pointer-events: none !important;
+}
+
+/* Use CSS variables for currency symbols in pseudo-elements */
+.currency-symbol::before {
+  content: var(--currency-symbol);
+}
+
+/* Automatic currency formatting for elements with monetary class */
+.monetary {
+  white-space: nowrap;
+}
+
+/* Appointment card text overflow prevention */
+.appointment-card,
+[class*="appointment"] {
+  overflow: hidden;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Ensure appointment card content doesn't overflow */
+.appointment-card * {
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* Specific fixes for booking reference numbers */
+.booking-reference {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Currency-specific styling based on the current currency */
+html[data-currency="USD"] .currency-sensitive,
+html[data-currency="EUR"] .currency-sensitive,
+html[data-currency="GBP"] .currency-sensitive,
+html[data-currency="QAR"] .currency-sensitive {
+  /* Currency-specific styling can be added here */
+}
+
+/* Dashboard card responsive styles */
+.dashboard-card {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dashboard-card .dashboard-amount {
+  overflow: hidden;
+  word-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.2;
+}
+
+.dashboard-card .dashboard-sub-amount {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100px;
+}
+
+/* Responsive font sizes for dashboard amounts */
+@media (max-width: 640px) {
+  .dashboard-card .dashboard-amount {
+    font-size: 1.125rem; /* text-lg */
+    line-height: 1.75rem;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .dashboard-card .dashboard-amount {
+    font-size: 1.25rem; /* text-xl */
+    line-height: 1.75rem;
+  }
+}
+
+@media (min-width: 1025px) {
+  .dashboard-card .dashboard-amount {
+    font-size: 1.5rem; /* text-2xl */
+    line-height: 2rem;
+  }
+}
+
+/* Ensure currency display components are responsive */
+.dashboard-card .currency-display {
+  overflow: hidden;
+  word-wrap: break-word;
+  word-break: break-word;
+  display: inline-block;
+  max-width: 100%;
+}
+
+/* Additional responsive adjustments for very small screens */
+@media (max-width: 480px) {
+  .dashboard-card .dashboard-amount {
+    font-size: 1rem; /* text-base */
+    line-height: 1.5rem;
+  }
+
+  .dashboard-card .dashboard-sub-amount {
+    max-width: 80px;
+  }
+}
+
+/* Alert system color coding */
+.alert-expired {
+  background-color: rgb(254 242 242); /* bg-red-50 */
+  border-left: 4px solid rgb(239 68 68); /* border-red-500 */
+}
+
+.alert-critical {
+  background-color: rgb(254 242 242); /* bg-red-50 */
+  border-left: 4px solid rgb(239 68 68); /* border-red-500 */
+}
+
+.alert-warning {
+  background-color: rgb(254 252 232); /* bg-yellow-50 */
+  border-left: 4px solid rgb(234 179 8); /* border-yellow-500 */
+}
+
+.alert-normal {
+  background-color: rgb(240 253 244); /* bg-green-50 */
+  border-left: 4px solid rgb(34 197 94); /* border-green-500 */
+}
+
+/* Enhanced table row hover effects for alerts */
+.alert-table-row:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+  transition: background-color 0.2s ease;
+}
+
+/* Responsive alert filters */
+@media (max-width: 640px) {
+  .alert-filters {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .alert-filters .select-trigger {
+    width: 100%;
+  }
+}
+
+/* Alert badge animations */
+.alert-badge {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+/* Inventory progress bar enhancements */
+.inventory-progress {
+  transition: all 0.3s ease;
+}
+
+.inventory-progress[data-status="critical"] .progress-bar {
+  background-color: rgb(239 68 68); /* red-500 */
+}
+
+.inventory-progress[data-status="low"] .progress-bar {
+  background-color: rgb(234 179 8); /* yellow-500 */
+}
+
+.inventory-progress[data-status="normal"] .progress-bar {
+  background-color: rgb(34 197 94); /* green-500 */
+}
+
+/* Ensure charts use the correct currency symbol */
+.recharts-tooltip-item-value::before {
+  content: var(--currency-symbol);
+}
+
+/* Calendar styles are now defined in the CustomCalendar component */
+
+/* Line clamp utilities */
+.line-clamp-1 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.line-clamp-2 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.line-clamp-3 {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+

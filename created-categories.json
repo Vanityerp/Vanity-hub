@@ -1,0 +1,82 @@
+[
+  {
+    "id": "hair-services",
+    "name": "Hair Services",
+    "description": "Professional hair cutting, styling, coloring, and treatment services for all hair types",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:23.131Z",
+    "updatedAt": "2025-06-29T18:45:23.131Z"
+  },
+  {
+    "id": "nail-services",
+    "name": "Nail Services",
+    "description": "Complete nail care including manicures, pedicures, nail art, and nail treatments",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:23.409Z",
+    "updatedAt": "2025-06-29T18:45:23.409Z"
+  },
+  {
+    "id": "facial-treatments",
+    "name": "Facial Treatments",
+    "description": "Skincare and facial treatments for all skin types including deep cleansing, anti-aging, and specialized treatments",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:23.664Z",
+    "updatedAt": "2025-06-29T18:45:23.664Z"
+  },
+  {
+    "id": "massage-therapy",
+    "name": "Massage Therapy",
+    "description": "Relaxing and therapeutic massage services for wellness and stress relief",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:23.933Z",
+    "updatedAt": "2025-06-29T18:45:23.933Z"
+  },
+  {
+    "id": "waxing-services",
+    "name": "Waxing Services",
+    "description": "Professional hair removal services using high-quality wax for smooth, long-lasting results",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:24.193Z",
+    "updatedAt": "2025-06-29T18:45:24.193Z"
+  },
+  {
+    "id": "eyebrow-&-lash-services",
+    "name": "Eyebrow & Lash Services",
+    "description": "Eyebrow shaping, tinting, lash extensions, and lash treatments for enhanced natural beauty",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:24.456Z",
+    "updatedAt": "2025-06-29T18:45:24.456Z"
+  },
+  {
+    "id": "makeup-services",
+    "name": "Makeup Services",
+    "description": "Professional makeup application for special occasions, events, and everyday looks",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:24.723Z",
+    "updatedAt": "2025-06-29T18:45:24.723Z"
+  },
+  {
+    "id": "body-treatments",
+    "name": "Body Treatments",
+    "description": "Luxurious body treatments including scrubs, wraps, and moisturizing treatments",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:24.984Z",
+    "updatedAt": "2025-06-29T18:45:24.984Z"
+  },
+  {
+    "id": "bridal-packages",
+    "name": "Bridal Packages",
+    "description": "Complete bridal beauty packages for your special day including hair, makeup, and skincare",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:25.254Z",
+    "updatedAt": "2025-06-29T18:45:25.254Z"
+  },
+  {
+    "id": "men's-grooming",
+    "name": "Men's Grooming",
+    "description": "Specialized grooming services designed specifically for men including haircuts, beard care, and skincare",
+    "serviceCount": 0,
+    "createdAt": "2025-06-29T18:45:25.517Z",
+    "updatedAt": "2025-06-29T18:45:25.517Z"
+  }
+]
