@@ -1,0 +1,339 @@
+name: Database Migration Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'prisma/migrations/**'
+      - 'prisma/schema.prisma'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'prisma/migrations/**'
+      - 'prisma/schema.prisma'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to migrate'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+      action:
+        description: 'Migration action'
+        required: true
+        default: 'migrate'
+        type: choice
+        options:
+        - migrate
+        - reset
+        - seed
+        - status
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Validate Schema Changes
+  validate-schema:
+    name: Validate Schema Changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Check for breaking changes
+        run: npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Type check
+        run: npm run type-check
+
+  # Test Migration on Staging
+  test-migration-staging:
+    name: Test Migration (Staging)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    environment: staging
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vanity_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/vanity_test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Reset database
+        run: npx prisma migrate reset --force
+
+      - name: Run migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed database
+        run: npx prisma db seed
+
+      - name: Verify migration
+        run: npx prisma migrate status
+
+      - name: Run database tests
+        run: npm run test:db
+
+  # Deploy Migration to Staging
+  deploy-migration-staging:
+    name: Deploy Migration (Staging)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Check migration status
+        run: npx prisma migrate status
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+
+      - name: Verify migration
+        run: npx prisma migrate status
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+
+      - name: Run post-migration tests
+        run: npm run test:db
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+
+      - name: Notify staging migration success
+        uses: 8398a7/action-slack@v3
+        if: success()
+        with:
+          status: success
+          channel: '#database'
+          text: '✅ Database migration deployed to staging successfully!'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Deploy Migration to Production
+  deploy-migration-production:
+    name: Deploy Migration (Production)
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Create database backup
+        run: |
+          echo "Creating database backup before migration..."
+          # Add your backup logic here
+          # For example, using pg_dump or your cloud provider's backup API
+
+      - name: Check migration status
+        run: npx prisma migrate status
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+      - name: Verify migration
+        run: npx prisma migrate status
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+      - name: Run post-migration tests
+        run: npm run test:db
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+      - name: Notify production migration success
+        uses: 8398a7/action-slack@v3
+        if: success()
+        with:
+          status: success
+          channel: '#database'
+          text: '🚀 Database migration deployed to production successfully!'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify production migration failure
+        uses: 8398a7/action-slack@v3
+        if: failure()
+        with:
+          status: failure
+          channel: '#database'
+          text: '❌ Database migration to production failed! Check logs immediately!'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Manual Database Operations
+  manual-db-operation:
+    name: Manual Database Operation
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    environment: ${{ github.event.inputs.environment }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Set database URL
+        run: |
+          if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+            echo "DATABASE_URL=${{ secrets.PRODUCTION_DATABASE_URL }}" >> $GITHUB_ENV
+          else
+            echo "DATABASE_URL=${{ secrets.STAGING_DATABASE_URL }}" >> $GITHUB_ENV
+          fi
+
+      - name: Run migration
+        if: github.event.inputs.action == 'migrate'
+        run: npx prisma migrate deploy
+
+      - name: Reset database
+        if: github.event.inputs.action == 'reset'
+        run: npx prisma migrate reset --force
+
+      - name: Seed database
+        if: github.event.inputs.action == 'seed'
+        run: npx prisma db seed
+
+      - name: Check migration status
+        if: github.event.inputs.action == 'status'
+        run: npx prisma migrate status
+
+      - name: Notify operation completion
+        uses: 8398a7/action-slack@v3
+        with:
+          status: success
+          channel: '#database'
+          text: '✅ Manual database operation completed: ${{ github.event.inputs.action }} on ${{ github.event.inputs.environment }}'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Database Health Check
+  db-health-check:
+    name: Database Health Check
+    runs-on: ubuntu-latest
+    needs: [deploy-migration-staging, deploy-migration-production]
+    if: always() && (needs.deploy-migration-staging.result == 'success' || needs.deploy-migration-production.result == 'success')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Health check staging
+        if: needs.deploy-migration-staging.result == 'success'
+        run: |
+          npx prisma db execute --stdin <<< "SELECT 1;"
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+
+      - name: Health check production
+        if: needs.deploy-migration-production.result == 'success'
+        run: |
+          npx prisma db execute --stdin <<< "SELECT 1;"
+        env:
+          DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+
+      - name: Performance check
+        run: |
+          if [ "${{ needs.deploy-migration-production.result }}" == "success" ]; then
+            echo "Running performance check on production database..."
+            # Add your performance check logic here
+          fi

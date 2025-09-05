@@ -1,0 +1,68 @@
+version: 2
+updates:
+  # Enable version updates for npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "Vanityerp"
+    assignees:
+      - "Vanityerp"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "javascript"
+    ignore:
+      # Ignore major version updates for these packages
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Group all patch updates together
+      patch-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "version-update:semver-patch"
+      # Group all minor updates together
+      minor-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "version-update:semver-minor"
+      # Group React ecosystem updates
+      react-ecosystem:
+        patterns:
+          - "react*"
+          - "@types/react*"
+          - "next*"
+      # Group testing framework updates
+      testing-framework:
+        patterns:
+          - "jest*"
+          - "@testing-library/*"
+          - "playwright*"
+          - "@playwright/*"
+      # Group Prisma updates
+      prisma-ecosystem:
+        patterns:
+          - "prisma*"
+          - "@prisma/*"
+      # Group UI library updates
+      ui-library:
+        patterns:
+          - "@radix-ui/*"
+          - "tailwindcss*"
+          - "@tailwindcss/*"
+          - "lucide-react"
+      # Group authentication updates
+      auth-ecosystem:
+        patterns:
+          - "next-auth*"
+          - "@auth/*"

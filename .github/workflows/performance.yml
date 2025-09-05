@@ -1,0 +1,417 @@
+name: Performance Monitoring Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run performance tests daily at 3 AM UTC
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Lighthouse CI Performance Tests
+  lighthouse-ci:
+    name: Lighthouse CI Performance Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Build application
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          NEXTAUTH_SECRET: test-secret
+          NEXTAUTH_URL: http://localhost:3000
+
+      - name: Start application
+        run: |
+          npm start &
+          sleep 30
+
+      - name: Run Lighthouse CI
+        run: |
+          npm install -g @lhci/cli@0.12.x
+          lhci autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Upload Lighthouse results
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-results
+          path: .lighthouseci/
+          retention-days: 30
+
+  # Load Testing with Artillery
+  load-test:
+    name: Load Testing
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Artillery
+        run: npm install -g artillery
+
+      - name: Create load test configuration
+        run: |
+          cat > artillery-config.yml << EOF
+          config:
+            target: '${{ secrets.STAGING_URL || 'http://localhost:3000' }}'
+            phases:
+              - duration: 60
+                arrivalRate: 5
+              - duration: 120
+                arrivalRate: 10
+              - duration: 60
+                arrivalRate: 5
+          scenarios:
+            - name: "Homepage load test"
+              weight: 70
+              flow:
+                - get:
+                    url: "/"
+                - think: 2
+                - get:
+                    url: "/api/status"
+            - name: "API load test"
+              weight: 30
+              flow:
+                - get:
+                    url: "/api/status"
+                - think: 1
+                - get:
+                    url: "/api/products"
+          EOF
+
+      - name: Run load test
+        run: artillery run artillery-config.yml --output load-test-results.json
+
+      - name: Generate load test report
+        run: artillery report load-test-results.json --output load-test-report.html
+
+      - name: Upload load test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: load-test-results
+          path: 
+            - load-test-results.json
+            - load-test-report.html
+          retention-days: 30
+
+  # Bundle Size Analysis
+  bundle-analysis:
+    name: Bundle Size Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          NEXTAUTH_SECRET: test-secret
+          NEXTAUTH_URL: http://localhost:3000
+
+      - name: Analyze bundle size
+        run: |
+          npx @next/bundle-analyzer .next/static/chunks/*.js
+
+      - name: Check bundle size limits
+        run: |
+          # Check if bundle size exceeds limits
+          BUNDLE_SIZE=$(du -s .next | cut -f1)
+          MAX_SIZE=50000  # 50MB in KB
+          
+          if [ $BUNDLE_SIZE -gt $MAX_SIZE ]; then
+            echo "Bundle size ($BUNDLE_SIZE KB) exceeds limit ($MAX_SIZE KB)"
+            exit 1
+          else
+            echo "Bundle size ($BUNDLE_SIZE KB) is within limits"
+          fi
+
+      - name: Upload bundle analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-analysis
+          path: .next/analyze/
+          retention-days: 30
+
+  # Memory Usage Monitoring
+  memory-monitoring:
+    name: Memory Usage Monitoring
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Start application with monitoring
+        run: |
+          npm start &
+          APP_PID=$!
+          sleep 30
+          
+          # Monitor memory usage
+          ps -p $APP_PID -o pid,ppid,cmd,%mem,%cpu --no-headers > memory-usage.log
+          
+          # Get memory usage over time
+          for i in {1..10}; do
+            ps -p $APP_PID -o pid,%mem,%cpu --no-headers >> memory-usage.log
+            sleep 10
+          done
+          
+          kill $APP_PID
+
+      - name: Upload memory usage logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: memory-usage
+          path: memory-usage.log
+          retention-days: 30
+
+  # Database Performance Testing
+  db-performance:
+    name: Database Performance Testing
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vanity_perf_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/vanity_perf_test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run database migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed database with test data
+        run: npx prisma db seed
+
+      - name: Run database performance tests
+        run: |
+          # Create performance test script
+          cat > db-perf-test.js << 'EOF'
+          const { PrismaClient } = require('@prisma/client');
+          const prisma = new PrismaClient();
+          
+          async function runPerformanceTests() {
+            console.log('Starting database performance tests...');
+            
+            // Test 1: Simple query performance
+            const start1 = Date.now();
+            await prisma.user.findMany({ take: 100 });
+            const end1 = Date.now();
+            console.log(`Simple query (100 records): ${end1 - start1}ms`);
+            
+            // Test 2: Complex query with joins
+            const start2 = Date.now();
+            await prisma.appointment.findMany({
+              include: {
+                client: true,
+                staff: true,
+                services: true
+              },
+              take: 50
+            });
+            const end2 = Date.now();
+            console.log(`Complex query with joins (50 records): ${end2 - start2}ms`);
+            
+            // Test 3: Write performance
+            const start3 = Date.now();
+            await prisma.user.create({
+              data: {
+                email: `test-${Date.now()}@example.com`,
+                name: 'Test User',
+                role: 'CLIENT'
+              }
+            });
+            const end3 = Date.now();
+            console.log(`Write operation: ${end3 - start3}ms`);
+            
+            await prisma.$disconnect();
+          }
+          
+          runPerformanceTests().catch(console.error);
+          EOF
+          
+          node db-perf-test.js > db-performance-results.log
+
+      - name: Upload database performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-performance-results
+          path: db-performance-results.log
+          retention-days: 30
+
+  # API Performance Testing
+  api-performance:
+    name: API Performance Testing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Build application
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/test
+          NEXTAUTH_SECRET: test-secret
+          NEXTAUTH_URL: http://localhost:3000
+
+      - name: Start application
+        run: |
+          npm start &
+          sleep 30
+
+      - name: Run API performance tests
+        run: |
+          # Test API endpoints performance
+          echo "Testing API endpoints performance..."
+          
+          # Test /api/status
+          curl -w "@curl-format.txt" -o /dev/null -s http://localhost:3000/api/status > api-status-perf.log
+          
+          # Test /api/products
+          curl -w "@curl-format.txt" -o /dev/null -s http://localhost:3000/api/products > api-products-perf.log
+          
+          # Test /api/services
+          curl -w "@curl-format.txt" -o /dev/null -s http://localhost:3000/api/services > api-services-perf.log
+          
+          # Create curl format file
+          cat > curl-format.txt << 'EOF'
+          time_namelookup:  %{time_namelookup}\n
+          time_connect:     %{time_connect}\n
+          time_appconnect:  %{time_appconnect}\n
+          time_pretransfer: %{time_pretransfer}\n
+          time_redirect:    %{time_redirect}\n
+          time_starttransfer: %{time_starttransfer}\n
+          time_total:       %{time_total}\n
+          EOF
+
+      - name: Upload API performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-performance-results
+          path: 
+            - api-status-perf.log
+            - api-products-perf.log
+            - api-services-perf.log
+          retention-days: 30
+
+  # Performance Regression Detection
+  performance-regression:
+    name: Performance Regression Detection
+    runs-on: ubuntu-latest
+    needs: [lighthouse-ci, load-test, bundle-analysis, memory-monitoring, db-performance, api-performance]
+    if: always()
+    steps:
+      - name: Download all performance artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: performance-results/
+
+      - name: Analyze performance trends
+        run: |
+          echo "## Performance Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Type | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lighthouse CI | ${{ needs.lighthouse-ci.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Load Test | ${{ needs.load-test.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bundle Analysis | ${{ needs.bundle-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Memory Monitoring | ${{ needs.memory-monitoring.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| DB Performance | ${{ needs.db-performance.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Performance | ${{ needs.api-performance.result }} |" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify performance issues
+        uses: 8398a7/action-slack@v3
+        if: failure()
+        with:
+          status: failure
+          channel: '#performance'
+          text: '⚠️ Performance regression detected! Please check the results.'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
