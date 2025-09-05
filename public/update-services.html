@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Update Services</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    h1 {
+      color: #333;
+    }
+    .card {
+      background-color: #f9f9f9;
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .button {
+      background-color: #4CAF50;
+      border: none;
+      color: white;
+      padding: 10px 20px;
+      text-align: center;
+      text-decoration: none;
+      display: inline-block;
+      font-size: 16px;
+      margin: 4px 2px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .button:hover {
+      background-color: #45a049;
+    }
+    #result {
+      margin-top: 20px;
+      padding: 10px;
+      border-left: 4px solid #4CAF50;
+      background-color: #f1f8e9;
+    }
+  </style>
+</head>
+<body>
+  <h1>Update Services</h1>
+  
+  <div class="card">
+    <h2>Fix Unknown Location in Services</h2>
+    <p>This utility will update the Henna and Weyba Tis services in your application to remove the unknown location "loc4" and replace it with "home".</p>
+    <button id="updateButton" class="button">Update Services</button>
+    <div id="result" style="display: none;"></div>
+  </div>
+
+  <script>
+    document.getElementById('updateButton').addEventListener('click', function() {
+      try {
+        // Get services from localStorage
+        const servicesJson = localStorage.getItem('vanity_services');
+        
+        if (!servicesJson) {
+          showResult('No services found in localStorage. The mock data will be used on next app load.');
+          return;
+        }
+        
+        // Parse services
+        let services = JSON.parse(servicesJson);
+        
+        if (!Array.isArray(services)) {
+          showResult('Error: Services in localStorage is not an array', true);
+          return;
+        }
+        
+        // Update Henna and Weyba Tis services
+        const updatedServices = services.map(service => {
+          // Check if this is a Henna or Weyba Tis service
+          if (service.category === 'Henna' || service.category === 'Weyba Tis') {
+            // Replace loc4 with home in locations array
+            if (Array.isArray(service.locations)) {
+              service.locations = service.locations.map(loc => loc === 'loc4' ? 'home' : loc);
+            }
+          }
+          return service;
+        });
+        
+        // Save updated services back to localStorage
+        localStorage.setItem('vanity_services', JSON.stringify(updatedServices));
+        
+        showResult('Services updated successfully! Henna and Weyba Tis services now use "home" instead of "loc4". Please refresh your application to see the changes.');
+      } catch (error) {
+        showResult('Error updating services: ' + error.message, true);
+      }
+    });
+
+    function showResult(message, isError = false) {
+      const resultElement = document.getElementById('result');
+      resultElement.textContent = message;
+      resultElement.style.display = 'block';
+      
+      if (isError) {
+        resultElement.style.borderLeftColor = '#f44336';
+        resultElement.style.backgroundColor = '#ffebee';
+      } else {
+        resultElement.style.borderLeftColor = '#4CAF50';
+        resultElement.style.backgroundColor = '#f1f8e9';
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,712 @@
+// Vanity Hub Database Schema
+// Comprehensive salon management system
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ERD generator disabled for now
+// generator erd {
+//   provider = "prisma-erd-generator"
+//   output   = "../docs/ERD.svg"
+// }
+
+// ============================================================================
+// USER MANAGEMENT
+// ============================================================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      String   @default("CLIENT") // UserRole @default(CLIENT)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLogin DateTime?
+
+  // Relationships
+  staffProfile   StaffMember?
+  clientProfile  Client?
+  appointments   Appointment[]
+  transactions   Transaction[]
+  auditLogs      AuditLog[]
+
+  @@index([email])
+  @@index([role, isActive])
+  @@index([createdAt]) // Index for date range queries
+  @@map("users")
+}
+
+// enum UserRole {
+//   ADMIN
+//   MANAGER
+//   STAFF
+//   CLIENT
+// }
+
+// ============================================================================
+// STAFF MANAGEMENT
+// ============================================================================
+
+model StaffMember {
+  id               String      @id @default(cuid())
+  userId           String      @unique
+  name             String
+  phone            String?
+  avatar           String?
+  color            String?
+  jobRole          String?     // Specific job role (stylist, colorist, etc.)
+  dateOfBirth      DateTime?   // Date of birth for HR management
+  homeService      Boolean     @default(false)
+  status           String      @default("ACTIVE") // StaffStatus @default(ACTIVE)
+  // HR Document Management Fields
+  employeeNumber   String?     // Employee number for HR tracking
+  qidNumber        String?     // Qatar ID number
+  passportNumber   String?     // Passport number
+  qidValidity      String?     // Qatar ID expiration date in MM-DD-YY format
+  passportValidity String?     // Passport expiration date in MM-DD-YY format
+  medicalValidity  String?     // Medical certificate expiration date in MM-DD-YY format
+  profileImage     String?     // Base64 encoded image or URL
+  profileImageType String?     // MIME type of the image
+  specialties      String?     // JSON data for manual service specialties (stored as string)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Relationships
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locations    StaffLocation[]
+  appointments Appointment[]
+  services     StaffService[]
+  schedule     StaffSchedule[]
+
+  @@index([name]) // Index for name searches
+  @@index([status]) // Index for filtering by status
+  @@map("staff_members")
+}
+
+// enum StaffStatus {
+//   ACTIVE
+//   INACTIVE
+//   ON_LEAVE
+// }
+
+model StaffSchedule {
+  id        String   @id @default(cuid())
+  staffId   String
+  dayOfWeek Int      // 0 = Sunday, 1 = Monday, etc.
+  startTime String   // HH:MM format
+  endTime   String   // HH:MM format
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationships
+  staff StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, dayOfWeek])
+  @@map("staff_schedules")
+}
+
+// ============================================================================
+// CLIENT MANAGEMENT
+// ============================================================================
+
+model Client {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  name        String
+  phone       String?
+  dateOfBirth DateTime?
+  preferences String?  // JSON data stored as string
+  notes       String? // Using Text type for potentially long content
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relationships
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loyaltyProgram LoyaltyProgram?
+  memberships    Membership[]
+
+  @@index([name]) // Index for name searches
+  @@map("clients")
+}
+
+// ============================================================================
+// LOCATION MANAGEMENT
+// ============================================================================
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  city      String
+  state     String?
+  zipCode   String?
+  country   String
+  phone     String?
+  email     String? // Case-insensitive email
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  coordinates String? // JSON data stored as string
+
+  // Relationships
+  staff        StaffLocation[]
+  appointments Appointment[]
+  services     LocationService[]
+  products     ProductLocation[]
+  batches      ProductBatch[]
+  transactions Transaction[]
+  audits       InventoryAudit[]
+  transfersFrom Transfer[] @relation("TransferFrom")
+  transfersTo   Transfer[] @relation("TransferTo")
+
+  @@index([name])
+  @@index([city, country])
+  @@index([isActive])
+  @@map("locations")
+}
+
+// ============================================================================
+// SERVICES MANAGEMENT
+// ============================================================================
+
+model Service {
+  id                 String   @id @default(cuid())
+  name               String
+  description        String? // Using Text type for potentially long content
+  duration           Int      // in minutes
+  price              Decimal // Specify precision for monetary values
+  category           String
+  showPricesToClients Boolean  @default(true)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relationships
+  locations    LocationService[]
+  staff        StaffService[]
+  appointments AppointmentService[]
+
+  @@index([name])
+  @@index([category, isActive])
+  @@index([price])
+  @@map("services")
+}
+
+// ============================================================================
+// APPOINTMENTS MANAGEMENT
+// ============================================================================
+
+model Appointment {
+  id               String            @id @default(cuid())
+  bookingReference String            @unique
+  clientId         String
+  staffId          String
+  locationId       String
+  date             DateTime
+  duration         Int               // in minutes
+  totalPrice       Decimal           // Specify precision for monetary values
+  status           String            @default("PENDING") // AppointmentStatus @default(PENDING)
+  notes            String?           // Using Text type for potentially long content
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  // Relationships
+  client   User        @relation(fields: [clientId], references: [id])
+  staff    StaffMember @relation(fields: [staffId], references: [id])
+  location Location    @relation(fields: [locationId], references: [id])
+  services AppointmentService[]
+  products AppointmentProduct[]
+
+  @@index([date]) // Index for date-based queries
+  @@index([clientId])
+  @@index([staffId])
+  @@index([locationId])
+  @@index([status])
+  @@map("appointments")
+}
+
+// enum AppointmentStatus {
+//   PENDING
+//   CONFIRMED
+//   IN_PROGRESS
+//   COMPLETED
+//   CANCELLED
+//   NO_SHOW
+// }
+
+// ============================================================================
+// JUNCTION TABLES
+// ============================================================================
+
+model StaffLocation {
+  id         String   @id @default(cuid())
+  staffId    String
+  locationId String
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  // Relationships
+  staff    StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  location Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, locationId])
+  @@map("staff_locations")
+}
+
+model StaffService {
+  id        String   @id @default(cuid())
+  staffId   String
+  serviceId String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  // Relationships
+  staff   StaffMember @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  service Service     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, serviceId])
+  @@map("staff_services")
+}
+
+model LocationService {
+  id         String   @id @default(cuid())
+  locationId String
+  serviceId  String
+  price      Decimal? // Location-specific pricing
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  // Relationships
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([locationId, serviceId])
+  @@map("location_services")
+}
+
+model AppointmentService {
+  id            String   @id @default(cuid())
+  appointmentId String
+  serviceId     String
+  price         Decimal
+  duration      Int      // in minutes
+  createdAt     DateTime @default(now())
+
+  // Relationships
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  service     Service     @relation(fields: [serviceId], references: [id])
+
+  @@unique([appointmentId, serviceId])
+  @@map("appointment_services")
+}
+
+// ============================================================================
+// PRODUCTS MANAGEMENT
+// ============================================================================
+
+model Product {
+  id          String      @id @default(cuid())
+  name        String
+  description String?
+  price       Float
+  cost        Float?
+  category    String      // Main product category (SKINCARE, MAKEUP, HAIR_CARE, etc.)
+  type        String      // Detailed product type/subcategory (e.g., "Skincare - Cleansers", "Makeup - Face")
+  brand       String?
+  sku         String?     @unique
+  barcode     String?
+  image       String?     // Primary product image
+  images      String?     // JSON string for multiple images array
+  isRetail    Boolean     @default(false)
+  isActive    Boolean     @default(true)
+  isFeatured  Boolean     @default(false)
+  isNew       Boolean     @default(false)
+  isBestSeller Boolean    @default(false)
+  isSale      Boolean     @default(false)
+  salePrice   Float?
+  rating      Float?      @default(0)
+  reviewCount Int         @default(0)
+  features    String?     // JSON string for array data
+  ingredients String?     // JSON string for array data
+  howToUse    String?     // JSON string for array data
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relationships
+  locations    ProductLocation[]
+  appointments AppointmentProduct[]
+  audits       InventoryAudit[]
+  transfers    Transfer[]
+  batches      ProductBatch[]
+
+  @@map("products")
+}
+
+// Product categories for reference (now stored as strings in category field):
+// SKINCARE, MAKEUP, HAIR_CARE, HAIR_EXTENSIONS, NAIL_CARE, FRAGRANCE,
+// PERSONAL_CARE, SPECIALTY, TOOLS, ACCESSORIES, OTHER
+
+model ProductLocation {
+  id         String   @id @default(cuid())
+  productId  String
+  locationId String
+  stock      Int      @default(0)
+  price      Float?   // Location-specific pricing
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relationships
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locationId])
+  @@map("product_locations")
+}
+
+model ProductBatch {
+  id           String    @id @default(cuid())
+  productId    String
+  locationId   String
+  batchNumber  String    // Unique batch/lot number
+  expiryDate   DateTime? // Expiry date for the batch
+  quantity     Int       @default(0) // Quantity in this batch
+  costPrice    Float?    // Cost price for this specific batch
+  supplierInfo String?   // Supplier information for this batch
+  notes        String?   // Additional notes about the batch
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relationships
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, locationId, batchNumber])
+  @@map("product_batches")
+}
+
+model Transfer {
+  id              String   @id @default(cuid())
+  transferId      String   @unique // Human-readable transfer ID like TXF-123456
+  productId       String
+  productName     String
+  fromLocationId  String
+  toLocationId    String
+  quantity        Int
+  status          String   @default("completed") // pending, completed, cancelled
+  reason          String?
+  notes           String?
+  createdBy       String
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  // Relationships
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  fromLocation Location @relation("TransferFrom", fields: [fromLocationId], references: [id])
+  toLocation   Location @relation("TransferTo", fields: [toLocationId], references: [id])
+
+  @@map("transfers")
+}
+
+model InventoryAudit {
+  id             String   @id @default(cuid())
+  productId      String
+  locationId     String
+  adjustmentType String   // 'add' or 'remove'
+  quantity       Int
+  previousStock  Int
+  newStock       Int
+  reason         String
+  notes          String?
+  userId         String
+  timestamp      DateTime @default(now())
+  createdAt      DateTime @default(now())
+
+  // Relationships
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("inventory_audits")
+}
+
+model AppointmentProduct {
+  id            String   @id @default(cuid())
+  appointmentId String
+  productId     String
+  quantity      Int      @default(1)
+  price         Float
+  createdAt     DateTime @default(now())
+
+  // Relationships
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id])
+
+  @@map("appointment_products")
+}
+
+// ============================================================================
+// FINANCIAL MANAGEMENT
+// ============================================================================
+
+model Transaction {
+  id            String            @id @default(cuid())
+  userId        String
+  amount        Decimal
+  type          String            // TransactionType
+  status        String            @default("PENDING") // TransactionStatus @default(PENDING)
+  method        String            // PaymentMethod
+  reference     String?
+  description   String?
+  locationId    String?
+  appointmentId String?
+
+  // Consolidated transaction fields
+  serviceAmount         Decimal?  // Total amount for services (after discount)
+  productAmount         Decimal?  // Total amount for products (no discount)
+  originalServiceAmount Decimal?  // Original service amount before discount
+  discountPercentage    Decimal?  // Overall discount percentage applied
+  discountAmount        Decimal?  // Total discount amount applied
+  items                 String?   // JSON array of transaction items (stored as string)
+
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  // Relationships
+  user     User      @relation(fields: [userId], references: [id])
+  location Location? @relation(fields: [locationId], references: [id])
+
+  @@map("transactions")
+}
+
+// enum TransactionType {
+//   PAYMENT
+//   REFUND
+//   CREDIT
+//   DEBIT
+// }
+
+// enum TransactionStatus {
+//   PENDING
+//   COMPLETED
+//   FAILED
+//   CANCELLED
+// }
+
+// enum PaymentMethod {
+//   CASH
+//   CARD
+//   BANK_TRANSFER
+//   DIGITAL_WALLET
+//   LOYALTY_POINTS
+// }
+
+// ============================================================================
+// LOYALTY PROGRAM
+// ============================================================================
+
+model LoyaltyProgram {
+  id           String   @id @default(cuid())
+  clientId     String   @unique
+  points       Int      @default(0)
+  tier         String   @default("Bronze")
+  totalSpent   Decimal  @default(0)
+  joinDate     DateTime @default(now())
+  lastActivity DateTime @default(now())
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relationships
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@map("loyalty_programs")
+}
+
+// ============================================================================
+// GIFT CARDS & MEMBERSHIPS
+// ============================================================================
+
+model GiftCard {
+  id              String    @id @default(cuid())
+  code            String    @unique
+  type            String    // DIGITAL, PHYSICAL
+  originalAmount  Decimal
+  currentBalance  Decimal
+  status          String    // ACTIVE, REDEEMED, EXPIRED, CANCELLED
+  issuedDate      DateTime
+  expirationDate  DateTime?
+  issuedBy        String
+  issuedByName    String
+  issuedTo        String?
+  issuedToName    String?
+  purchaserEmail  String?
+  purchaserPhone  String?
+  message         String?
+  location        String
+  transactionId   String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relationships
+  transactions GiftCardTransaction[]
+
+  @@map("gift_cards")
+}
+
+model GiftCardTransaction {
+  id            String   @id @default(cuid())
+  giftCardId    String
+  type          String   // REDEMPTION, REFUND, ADJUSTMENT
+  amount        Decimal
+  balanceBefore Decimal
+  balanceAfter  Decimal
+  description   String?
+  transactionId String?
+  createdAt     DateTime @default(now())
+
+  // Relationships
+  giftCard GiftCard @relation(fields: [giftCardId], references: [id], onDelete: Cascade)
+
+  @@map("gift_card_transactions")
+}
+
+model MembershipTier {
+  id                  String   @id @default(cuid())
+  name                String
+  description         String
+  price               Decimal
+  duration            String   // MONTHLY, QUARTERLY, YEARLY
+  benefits            String   // JSON string
+  discountPercentage  Int
+  maxDiscountAmount   Decimal?
+  includedServices    String   // JSON string
+  priorityBooking     Boolean  @default(false)
+  freeServices        Int      @default(0)
+  isActive            Boolean  @default(true)
+  sortOrder           Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relationships
+  memberships Membership[]
+
+  @@map("membership_tiers")
+}
+
+model Membership {
+  id                 String   @id @default(cuid())
+  clientId           String
+  clientName         String
+  tierId             String
+  tierName           String
+  status             String   // ACTIVE, EXPIRED, CANCELLED, SUSPENDED
+  startDate          DateTime
+  endDate            DateTime
+  autoRenew          Boolean  @default(true)
+  price              Decimal
+  discountPercentage Int
+  usedFreeServices   Int      @default(0)
+  totalFreeServices  Int      @default(0)
+  location           String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relationships
+  client Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tier   MembershipTier @relation(fields: [tierId], references: [id])
+  transactions MembershipTransaction[]
+
+  @@map("memberships")
+}
+
+model MembershipTransaction {
+  id           String   @id @default(cuid())
+  membershipId String
+  type         String   // ENROLLMENT, RENEWAL, CANCELLATION, SERVICE_USAGE
+  amount       Decimal?
+  description  String?
+  serviceId    String?
+  serviceName  String?
+  createdAt    DateTime @default(now())
+
+  // Relationships
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+
+  @@map("membership_transactions")
+}
+
+// ============================================================================
+// AUDIT & LOGGING
+// ============================================================================
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  action       String   // AuditAction enum value
+  userId       String?  // User who performed the action (nullable for system actions)
+  userEmail    String?  // Email of the user
+  userRole     String?  // Role of the user
+  resourceType String?  // Type of resource affected (User, Client, etc.)
+  resourceId   String?  // ID of the affected resource
+  details      String?  // Additional details about the action (JSON string for SQLite)
+  ipAddress    String?  // IP address of the request
+  userAgent    String?  // User agent string
+  location     String?  // Geographic location (if available)
+  severity     String   @default("LOW") // LOW, MEDIUM, HIGH, CRITICAL
+  metadata     String?  // Additional metadata (JSON string for SQLite)
+  createdAt    DateTime @default(now())
+
+  // Relationships (nullable since userId can be null for system actions)
+  user User? @relation(fields: [userId], references: [id])
+
+  // Indexes for efficient querying
+  @@index([userId])
+  @@index([action])
+  @@index([severity])
+  @@index([createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_logs")
+}
+
+// ============================================================================
+// INDEXES FOR PERFORMANCE
+// ============================================================================
+
+// PostgreSQL-specific performance optimizations:
+// 1. Full-text search indexes using pg_trgm extension
+// 2. Partial indexes for active records
+// 3. Composite indexes for common query patterns
+// 4. GIN indexes for JSON fields
+
+// Full-text search indexes (will be created in migration)
+// CREATE INDEX CONCURRENTLY idx_users_email_gin ON users USING gin(email gin_trgm_ops);
+// CREATE INDEX CONCURRENTLY idx_staff_name_gin ON staff_members USING gin(name gin_trgm_ops);
+// CREATE INDEX CONCURRENTLY idx_clients_name_gin ON clients USING gin(name gin_trgm_ops);
+// CREATE INDEX CONCURRENTLY idx_products_name_gin ON products USING gin(name gin_trgm_ops);
+// CREATE INDEX CONCURRENTLY idx_services_name_gin ON services USING gin(name gin_trgm_ops);
+
+// Partial indexes for active records
+// CREATE INDEX CONCURRENTLY idx_users_active ON users(id) WHERE is_active = true;
+// CREATE INDEX CONCURRENTLY idx_staff_active ON staff_members(id) WHERE status = 'ACTIVE';
+// CREATE INDEX CONCURRENTLY idx_products_active ON products(id) WHERE is_active = true;
+// CREATE INDEX CONCURRENTLY idx_services_active ON services(id) WHERE is_active = true;
+
+// GIN indexes for JSON fields
+// CREATE INDEX CONCURRENTLY idx_clients_preferences_gin ON clients USING gin(preferences);
+// CREATE INDEX CONCURRENTLY idx_staff_specialties_gin ON staff_members USING gin(specialties);
+// CREATE INDEX CONCURRENTLY idx_transactions_items_gin ON transactions USING gin(items);
+
+// Composite indexes for common queries
+// CREATE INDEX CONCURRENTLY idx_appointments_date_status ON appointments(date, status);
+// CREATE INDEX CONCURRENTLY idx_appointments_staff_date ON appointments(staff_id, date);
+// CREATE INDEX CONCURRENTLY idx_transactions_user_date ON transactions(user_id, created_at);
+// CREATE INDEX CONCURRENTLY idx_product_locations_stock ON product_locations(location_id, stock) WHERE is_active = true;
